@@ -1,0 +1,17 @@
+services:
+  edge-nginx:
+    image: nginx:stable-alpine
+    container_name: tencent-edge-nginx
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    environment:
+      STOCK_FRONTEND_UPSTREAM: ${STOCK_FRONTEND_UPSTREAM:-host.docker.internal:8080}
+      CARSALES_FRONTEND_UPSTREAM: ${CARSALES_FRONTEND_UPSTREAM:-host.docker.internal:8081}
+      # 仅替换上游地址，避免 envsubst 误伤 $host 等 Nginx 变量（见 templates 注释）
+      NGINX_ENVSUBST_FILTER: STOCK_FRONTEND_UPSTREAM|CARSALES_FRONTEND_UPSTREAM
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./templates:/etc/nginx/templates:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1,0 +1,49 @@
+# Rendered by the official nginx image entrypoint (envsubst) into /etc/nginx/conf.d/
+# 须配合 compose 中的 NGINX_ENVSUBST_FILTER，仅替换 ${STOCK_*} / ${CARSALES_*}；
+# Nginx 运行期变量用单个 $（$host），勿写 $$。
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name stock.zhangzhicheng.info;
+
+    ssl_certificate     /etc/nginx/ssl/stock.zhangzhicheng.info/stock.zhangzhicheng.info_bundle.pem;
+    ssl_certificate_key /etc/nginx/ssl/stock.zhangzhicheng.info/stock.zhangzhicheng.info.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    access_log /var/log/nginx/stock.access.log;
+    error_log  /var/log/nginx/stock.error.log warn;
+
+    location / {
+        proxy_pass http://${STOCK_FRONTEND_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name carsales.zhangzhicheng.info;
+
+    ssl_certificate     /etc/nginx/ssl/carsales.zhangzhicheng.info/carsales.zhangzhicheng.info_bundle.pem;
+    ssl_certificate_key /etc/nginx/ssl/carsales.zhangzhicheng.info/carsales.zhangzhicheng.info.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    access_log /var/log/nginx/carsales.access.log;
+    error_log  /var/log/nginx/carsales.error.log warn;
+
+    location / {
+        proxy_pass http://${CARSALES_FRONTEND_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+}
