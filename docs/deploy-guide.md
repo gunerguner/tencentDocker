@@ -196,25 +196,31 @@ curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8081/
 
 ## 7. TLS 证书（统一目录）
 
-在 **`tencentDocker/docker/ssl/`** 下按域名分子目录放置（文件名需与 Nginx 模板一致）：
+证书与私钥**不入 Git**（见仓库 `.gitignore`），`git clone` / `git pull` 后 **`docker/ssl/` 下各域名子目录会是空的**，属正常现象。须在**服务器上**手动放置文件；边缘 Nginx 通过 `./ssl:/etc/nginx/ssl:ro` 只读挂载读取。
 
-**stock**（腾讯云下载后，将下列两个文件放入 `ssl/stock.zhangzhicheng.info/`，`.csr` 不必上传）：
+在 **`tencentDocker/docker/ssl/`** 下按域名分子目录放置（**文件名须与** [`docker/templates/zhangzhicheng.conf.template`](../docker/templates/zhangzhicheng.conf.template) **一致**）：
+
+**stock**（腾讯云下载 Nginx 格式后，将下列两个文件放入 `ssl/stock.zhangzhicheng.info/`，`.csr` 不必上传）：
 
 ```
 tencentDocker/docker/ssl/stock.zhangzhicheng.info/stock.zhangzhicheng.info_bundle.pem
 tencentDocker/docker/ssl/stock.zhangzhicheng.info/stock.zhangzhicheng.info.key
 ```
 
-（若仅有 `stock.zhangzhicheng.info_bundle.crt`，可复制为同名 `.pem` 或把模板里 `ssl_certificate` 改为 `.crt`。）
-
-**carsales**（仍按 Let's Encrypt / 自建习惯命名，或按云厂商 bundle 同样规则改模板）：
+**carsales**（同样规则；若使用 Let's Encrypt / certbot，将 `fullchain.pem` / `privkey.pem` 复制或软链为下列文件名，或改 Nginx 模板）：
 
 ```
-tencentDocker/docker/ssl/carsales.zhangzhicheng.info/fullchain.pem
-tencentDocker/docker/ssl/carsales.zhangzhicheng.info/privkey.pem
+tencentDocker/docker/ssl/carsales.zhangzhicheng.info/carsales.zhangzhicheng.info_bundle.pem
+tencentDocker/docker/ssl/carsales.zhangzhicheng.info/carsales.zhangzhicheng.info.key
 ```
 
-可使用 ACME（如 certbot）、云厂商证书或自建 CA。私钥权限建议仅 root 可读；通过只读挂载进容器即可。
+若云厂商仅提供 `*_bundle.crt`，内容与 `.pem` 相同，复制为同名 `.pem` 即可，例如：
+
+```bash
+cp stock.zhangzhicheng.info_bundle.crt stock.zhangzhicheng.info_bundle.pem
+```
+
+私钥权限建议 `chmod 600`；通过只读挂载进容器即可，无需重建业务栈镜像。
 
 ## 8. 启动外层 Nginx（仅 443）
 
@@ -278,7 +284,94 @@ docker compose --env-file .env logs --tail=100 edge-nginx
 
 ## 13. 更新与维护
 
-代码更新后，在各项目根目录 `git pull`，再执行对应项目的 `docker compose ... build && up -d`。仅改 `tencentDocker/docker/.env` 或证书时，在 `tencentDocker/docker` 下执行 `docker compose --env-file .env up -d` 即可重载容器（必要时 `docker compose restart edge-nginx`）。
+### 13.1 代码与配置
+
+代码更新后，在各项目根目录 `git pull`，再执行对应项目的 `docker compose ... build && up -d`。仅改 `tencentDocker/docker/.env` 时，在 `tencentDocker/docker` 下执行 `docker compose --env-file .env up -d` 即可。
+
+### 13.2 更新 TLS 证书（两个域名）
+
+证书续期或重新签发后，**只需在服务器上覆盖 `docker/ssl/` 内文件并重载边缘 Nginx**，无需 `git pull`、无需重建 stockManager / carSales 业务栈。
+
+#### 目录与文件名速查
+
+| 域名 | 服务器目录 | 证书链文件 | 私钥文件 |
+|------|------------|------------|----------|
+| stock | `docker/ssl/stock.zhangzhicheng.info/` | `stock.zhangzhicheng.info_bundle.pem` | `stock.zhangzhicheng.info.key` |
+| carsales | `docker/ssl/carsales.zhangzhicheng.info/` | `carsales.zhangzhicheng.info_bundle.pem` | `carsales.zhangzhicheng.info.key` |
+
+下文以部署目录 **`/opt/apps/tencentDocker/docker`** 为例；若路径不同，请替换为你的实际路径。
+
+#### 步骤一：获取新证书
+
+**腾讯云 SSL（推荐，与当前 stock / carsales 一致）**
+
+1. 登录 [腾讯云 SSL 证书控制台](https://console.cloud.tencent.com/ssl)。
+2. 对 `stock.zhangzhicheng.info`、`carsales.zhangzhicheng.info` 分别续期或重新申请并签发。
+3. 下载时选择 **Nginx** 格式；解压后每个域名通常得到 `*_bundle.crt`（或 `.pem`）与 `*.key`。
+4. 将 `.crt` 重命名或复制为上一表中的 `*_bundle.pem`（内容与 `.pem` 相同）。
+
+**Let's Encrypt / certbot（可选）**
+
+若用 ACME 签发，常见文件为 `fullchain.pem` 与 `privkey.pem`，需对应复制为上一表中的 bundle / key 文件名，或修改 Nginx 模板中的 `ssl_certificate` 路径。
+
+#### 步骤二：上传到服务器
+
+在**本机**（已解压证书的机器）执行，将 `<用户>`、`<服务器IP>` 换成实际值：
+
+```bash
+# 确保目录存在
+ssh <用户>@<服务器IP> "mkdir -p /opt/apps/tencentDocker/docker/ssl/stock.zhangzhicheng.info \
+  /opt/apps/tencentDocker/docker/ssl/carsales.zhangzhicheng.info"
+
+# stock 域名
+scp ./stock.zhangzhicheng.info_bundle.pem <用户>@<服务器IP>:/opt/apps/tencentDocker/docker/ssl/stock.zhangzhicheng.info/
+scp ./stock.zhangzhicheng.info.key           <用户>@<服务器IP>:/opt/apps/tencentDocker/docker/ssl/stock.zhangzhicheng.info/
+
+# carsales 域名
+scp ./carsales.zhangzhicheng.info_bundle.pem <用户>@<服务器IP>:/opt/apps/tencentDocker/docker/ssl/carsales.zhangzhicheng.info/
+scp ./carsales.zhangzhicheng.info.key        <用户>@<服务器IP>:/opt/apps/tencentDocker/docker/ssl/carsales.zhangzhicheng.info/
+```
+
+也可在服务器上用 `sftp`、面板上传等方式写入同一路径。两个域名可**分别**更新（只换其中一个目录、只重载 Nginx 即可）。
+
+#### 步骤三：权限与重载 Nginx
+
+在**服务器**上：
+
+```bash
+cd /opt/apps/tencentDocker/docker
+
+chmod 644 ssl/*/*_bundle.pem
+chmod 600 ssl/*/*.key
+
+docker compose --env-file .env restart edge-nginx
+```
+
+若 `restart` 后仍报旧证书或找不到文件，可强制重建边缘容器：
+
+```bash
+docker compose --env-file .env up -d --force-recreate edge-nginx
+```
+
+#### 步骤四：验证
+
+```bash
+# 容器内是否挂载到新文件（各应有两个文件）
+docker exec tencent-edge-nginx ls -la /etc/nginx/ssl/stock.zhangzhicheng.info/
+docker exec tencent-edge-nginx ls -la /etc/nginx/ssl/carsales.zhangzhicheng.info/
+
+# HTTPS 可达
+curl -fsS -o /dev/null -w "%{http_code}\n" https://stock.zhangzhicheng.info/
+curl -fsS -o /dev/null -w "%{http_code}\n" https://carsales.zhangzhicheng.info/
+
+# 查看证书有效期（可选）
+openssl s_client -connect stock.zhangzhicheng.info:443 -servername stock.zhangzhicheng.info </dev/null 2>/dev/null \
+  | openssl x509 -noout -dates -subject
+openssl s_client -connect carsales.zhangzhicheng.info:443 -servername carsales.zhangzhicheng.info </dev/null 2>/dev/null \
+  | openssl x509 -noout -dates -subject
+```
+
+失败时查看边缘 Nginx 日志：`docker compose --env-file .env logs --tail=50 edge-nginx`（常见为路径或文件名与模板不一致，见第 12 节）。
 
 ---
 
