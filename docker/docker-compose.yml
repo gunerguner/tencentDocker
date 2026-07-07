@@ -8,8 +8,9 @@ services:
     environment:
       STOCK_FRONTEND_UPSTREAM: ${STOCK_FRONTEND_UPSTREAM:-host.docker.internal:8080}
       CARSALES_FRONTEND_UPSTREAM: ${CARSALES_FRONTEND_UPSTREAM:-host.docker.internal:8081}
+      ASTOCK_FRONTEND_UPSTREAM: ${ASTOCK_FRONTEND_UPSTREAM:-host.docker.internal:8082}
       # 仅替换上游地址，避免 envsubst 误伤 $host 等 Nginx 变量（见 templates 注释）
-      NGINX_ENVSUBST_FILTER: STOCK_FRONTEND_UPSTREAM|CARSALES_FRONTEND_UPSTREAM
+      NGINX_ENVSUBST_FILTER: STOCK_FRONTEND_UPSTREAM|CARSALES_FRONTEND_UPSTREAM|ASTOCK_FRONTEND_UPSTREAM
     volumes:
       - ./ssl:/etc/nginx/ssl:ro
       - ./templates:/etc/nginx/templates:ro
